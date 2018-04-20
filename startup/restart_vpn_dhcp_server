@@ -1,0 +1,49 @@
+#!/bin/bash
+
+source /usr/local/cloud/network_service
+
+usage() {
+    echo "Usage: ./restart_vpn_dhcp_server -g <public_ip> -i <container_name> -s <subnet> -n <netmask> -d <share> -l <logfile>"
+} 
+
+declare -A arg_dict
+arg_count=0
+while getopts "s:g:d:l:n:" opt; 
+do
+    case $opt in
+        s)
+            arg_dict["subnet"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+        g)
+            arg_dict["public_ip"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+        d)
+            arg_dict["share"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+        i)
+            arg_dict["container_name"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+        l)
+            arg_dict["logfile"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+		n)
+            arg_dict["netmask"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+    esac
+done
+
+if [ $arg_count != 5 ]
+    then
+        usage
+        exit
+fi
+restart_vpn_dhcp_server arg_dict["subnet"] arg_dict["netmask"] \
+					  arg_dict["share"] arg_dict["public_ip"] \
+                      arg_dict["container_name"] arg_dict["logfile"] 
+  

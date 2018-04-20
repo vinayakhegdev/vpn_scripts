@@ -1,0 +1,45 @@
+#!/bin/bash
+
+source /usr/local/cloud/network_service
+
+usage() {
+    echo "Usage: ./restart_vpn_bridge -g <public_ip> -d <share> -l <logfile>"
+} 
+
+declare -A arg_dict
+arg_count=0
+while getopts "g:d:l:" opt; 
+do
+    case $opt in
+        g)
+            arg_dict["public_ip"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+        d)
+            arg_dict["share"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+        l)
+            arg_dict["logfile"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+    esac
+done
+
+if [ $arg_count != 3 ]
+    then
+        usage
+        exit -1
+fi
+
+touch "${arg_dict["share"]}/logs/status.txt"
+restart_vpn_bridge ${arg_dict["share"]} ${arg_dict["public_ip"]} \
+                      ${arg_dict["logfile"]} 
+ 
+status=$?
+if [ "$status" == 0 ]; then
+    out_dict["status"]="SUCCESS"
+    out_dict["data"]="Vpn bridge setup is success"
+    echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" >> "${arg_dict["share"]}/logs/${arg_dict["logfile"]}"
+    echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" > "${arg_dict["share"]}/logs/status.txt"
+fi    

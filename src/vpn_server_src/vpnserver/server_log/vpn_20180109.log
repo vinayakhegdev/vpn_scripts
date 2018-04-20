@@ -1,0 +1,60 @@
+2018-01-09 12:17:49.343 ------------------------------------------------------
+2018-01-09 12:17:49.343 SoftEther VPN Server Version 4.24 Build 9651   (English)
+2018-01-09 12:17:49.343 Compiled 2017/10/23 01:52:32 by yagi at pc33
+2018-01-09 12:17:49.343 Log Messages are written with UTF-8 Encoding Format.
+2018-01-09 12:17:49.343 The SoftEther VPN Server has been started.
+2018-01-09 12:17:49.343 IPsec Module: The IPsec ver 2.0 (ISAKMP/IKEv1) processing module is started.
+2018-01-09 12:17:49.343 OpenVPN Module: The OpenVPN Server Module is starting.
+2018-01-09 12:17:49.343 Loading the configuration file.
+2018-01-09 12:17:49.343 Configuration file does not exist. Attempting to start using initial settings.
+2018-01-09 12:17:49.394 Virtual Hub "DEFAULT" has been started.
+2018-01-09 12:17:49.394 The MAC address of Virtual Hub "DEFAULT" is "00-AE-19-9D-CE-24".
+2018-01-09 12:17:49.394 [HUB "DEFAULT"] The Virtual Hub is now online.
+2018-01-09 12:17:49.394 TCP Listener (port 443) is starting.
+2018-01-09 12:17:49.394 TCP Listener (port 992) is starting.
+2018-01-09 12:17:49.394 TCP Listener (port 443) has started. Now listening for connection from client.
+2018-01-09 12:17:49.394 TCP Listener (port 992) has started. Now listening for connection from client.
+2018-01-09 12:17:49.394 TCP Listener (port 1194) is starting.
+2018-01-09 12:17:49.404 TCP Listener (port 1194) has started. Now listening for connection from client.
+2018-01-09 12:17:49.404 TCP Listener (port 5555) is starting.
+2018-01-09 12:17:49.404 TCP Listener (port 5555) has started. Now listening for connection from client.
+2018-01-09 12:17:49.404 Monitoring the directory "/home/vinayak/work/cloud/common/vpn_scripts/vpn_dhcp_server/vpnserver". If the amount of available free disk space becomes less than 100.00 MBytes, the backup files for log files and configurations that are saved on the sub-directories of this directory will be automatically deleted in the order of oldest first. The amount of free disk space that determines when to start deletion can be modified by changing the "AutoDeleteCheckDiskFreeSpaceMin" item in the configuration file.
+2018-01-09 12:17:49.404 Starting the automatically saving background task. The interval between auto-saves is 300 seconds. You can change the interval by changing the parameter AutoSaveConfigSpan in the configuration file.
+2018-01-09 12:18:00.241 On the TCP Listener (Port 1194), a Client (IP address 127.0.0.1, Host name "localhost", Port number 50996) has connected.
+2018-01-09 12:18:00.241 For the client (IP address: 127.0.0.1, host name: "localhost", port number: 50996), connection "CID-1" has been created.
+2018-01-09 12:18:00.302 SSL communication for connection "CID-1" has been started. The encryption algorithm name is "AES128-SHA".
+2018-01-09 12:18:00.302 Connection "CID-1" connected using server admin mode.
+2018-01-09 12:18:00.302 Connection "CID-1" successfully logged in using administration mode.
+2018-01-09 12:18:00.302 Connection "CID-1" created a new remote procedure call session "RPC-34" for the purpose of administration mode.
+2018-01-09 12:18:52.274 Administration mode [RPC-34]: The server administrator password has been set.
+2018-01-09 12:19:24.434 Administration mode [RPC-34]: A new Virtual Hub "cloud" has been created.
+2018-01-09 12:19:24.434 Virtual Hub "cloud" has been started.
+2018-01-09 12:19:24.434 The MAC address of Virtual Hub "cloud" is "00-AE-7E-D6-C1-B3".
+2018-01-09 12:19:24.434 [HUB "cloud"] The Virtual Hub is now online.
+2018-01-09 12:20:50.799 [HUB "cloud"] Administration mode [RPC-34] (Virtual Hub "cloud"): User "cloud_site" has been created.
+2018-01-09 12:21:18.559 [HUB "cloud"] Administration mode [RPC-34] (Virtual Hub "cloud"): The setting of user "cloud_site" has been updated.
+2018-01-09 12:22:42.123 [HUB "cloud"] Administration mode [RPC-34] (Virtual Hub "cloud"): User "tenant12" has been created.
+2018-01-09 12:23:26.173 [HUB "cloud"] Administration mode [RPC-34] (Virtual Hub "cloud"): The setting of user "tenant12" has been updated.
+2018-01-09 12:24:01.244 [HUB "cloud"] Administration mode [RPC-34] (Virtual Hub "cloud"): User "tenant10" has been created.
+2018-01-09 12:24:20.229 [HUB "cloud"] Administration mode [RPC-34] (Virtual Hub "cloud"): The setting of user "tenant10" has been updated.
+2018-01-09 12:24:39.527 Connection "CID-1" terminated by the cause "No error." (code 0).
+2018-01-09 12:24:39.527 Connection "CID-1" has been terminated.
+2018-01-09 12:24:39.527 The connection with the client (IP address 127.0.0.1, Port number 50996) has been disconnected.
+2018-01-09 12:26:44.793 On the TCP Listener (Port 1194), a Client (IP address 127.0.0.1, Host name "localhost", Port number 51082) has connected.
+2018-01-09 12:26:44.793 For the client (IP address: 127.0.0.1, host name: "localhost", port number: 51082), connection "CID-2" has been created.
+2018-01-09 12:26:44.853 SSL communication for connection "CID-2" has been started. The encryption algorithm name is "AES128-SHA".
+2018-01-09 12:26:44.853 Connection "CID-2" connected using server admin mode.
+2018-01-09 12:26:44.853 Connection "CID-2" was unable to log in using administration mode. Access has been denied. (Error code 12)
+2018-01-09 12:26:44.884 Connection "CID-2" terminated by the cause "No error." (code 0).
+2018-01-09 12:26:44.884 Connection "CID-2" has been terminated.
+2018-01-09 12:26:44.884 The connection with the client (IP address 127.0.0.1, Port number 51082) has been disconnected.
+2018-01-09 12:26:48.798 On the TCP Listener (Port 1194), a Client (IP address 127.0.0.1, Host name "localhost", Port number 51084) has connected.
+2018-01-09 12:26:48.798 For the client (IP address: 127.0.0.1, host name: "localhost", port number: 51084), connection "CID-3" has been created.
+2018-01-09 12:26:48.859 SSL communication for connection "CID-3" has been started. The encryption algorithm name is "AES128-SHA".
+2018-01-09 12:26:48.859 Connection "CID-3" connected using server admin mode.
+2018-01-09 12:26:48.859 Connection "CID-3" successfully logged in using administration mode.
+2018-01-09 12:26:48.859 Connection "CID-3" created a new remote procedure call session "RPC-34" for the purpose of administration mode.
+2018-01-09 12:27:38.262 Administration mode [RPC-34]: The IPsec server setting has been updated.
+2018-01-09 12:27:42.886 Connection "CID-3" terminated by the cause "No error." (code 0).
+2018-01-09 12:27:42.886 Connection "CID-3" has been terminated.
+2018-01-09 12:27:42.886 The connection with the client (IP address 127.0.0.1, Port number 51084) has been disconnected.

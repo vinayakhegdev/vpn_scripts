@@ -1,0 +1,62 @@
+#!/bin/bash
+
+source /usr/local/cloud/network_service
+
+usage() {
+        echo "Usage: ./add_nic -i <container_name> -p <interface> -d <share> -l <logfile>\
+                -g <ip> -v <vlan> -s <subnet> -n <netmask>"
+} 
+
+declare -A arg_dict
+arg_count=0
+while getopts "p:i:g:d:l:v:s:n:" opt; 
+do
+    case $opt in
+        i)
+            arg_dict["container_name"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+        p)
+            arg_dict["interface"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+        d)
+            arg_dict["share"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+        l)
+            arg_dict["logfile"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+		g)
+            arg_dict["ip"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+        v)
+            arg_dict["vlan"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+        s)
+            arg_dict["subnet"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+        n)
+            arg_dict["netmask"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+    esac
+done
+
+touch "${arg_dict["share"]}/logs/status.txt"
+
+add_port_to_container arg_dict["container_name"] arg_dict["interface"] \
+                      arg_dict["vlan"] "0" arg_dict["ip"] arg_dict["subnet"] arg_dict["netmask"] \
+                      arg_dict["logfile"] 
+  
+status=$?
+if [ "$status" == 0 ]; then
+    out_dict["status"]="SUCCESS"
+    out_dict["data"]="adding to nic is success"
+    echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" >> "${arg_dict["share"]}/logs/${arg_dict["logfile"]}"
+    echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" > "${arg_dict["share"]}/logs/status.txt"
+fi    

@@ -1,0 +1,475 @@
+#!/bin/bash
+
+#---------------Start------------------------
+#Create ovs bridge on all vm's 
+#---------------Network Service--------------
+#Start vpn_dhcp_server one of the vm
+#---------------Network Service for mgmt-----
+#Start dhcp_relay with mgmt vlan
+#---------------connect other vm's-----------
+#Start vpn_bridge server on other vm's
+
+#Go for othter container creation
+#Attach the ovs bridge nic to other containers
+#Get the dhcp ip via dhclient in other containers
+#Update the mongo for the container ip's
+
+#x.x.x.1 ip in each subnet is used for network services exclude that
+
+declare -A out_dict
+
+DHCP_SERVER_CONTAINER_NAME="cloud_dhcp_server"
+DHCP_RELAY_CONTAINER_NAME="cloud_dhcp_relay"
+VPN_SERVER_CONTAINER_NAME="cloud_vpn_server"
+WORKDIR="/cloud_mnt"
+outfile="result.txt"
+
+status_check() {
+	status=$?
+	msg=$1
+	log_file=$2
+	logit=$3
+    share_dir=$(dirname $log_file)
+    statusfile="$share_dir/status.txt"
+	if [ "$status" != 0 ]; then
+        if [ "$logit" == 1 ]; then
+		    out_dict["status"]="FAILURE"
+       	    out_dict["data"]=$msg
+       	    echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" >> $log_file
+      	    echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" > $statusfile
+            exit -1
+	    else 
+            exit -1
+        fi
+    fi      
+}
+
+delete_port_from_container() {
+    container_name=$1
+	interface=$2
+    logfile=$3
+    echo "Entering deleting the port from container $container_name interface $interface" >> $logfile
+	/usr/local/cloud/ovs-docker del-port ovs-br1 $interface $container_name
+    echo "Exiting deleting the port from container $container_name interface $interface" >> $logfile
+}
+
+delete_port_from_br() {
+    interface=$1
+    logfile=$2
+    echo "Entering deleting the port $interface" >> $logfile
+	ovs-vsctl del-port ovs-br1 $interface
+    echo "Exiting deleting the port $interface" >> $logfile
+}
+
+add_port_to_container() {
+	container_name=$1
+	interface=$2
+	vlan_tag=$3
+	vlan_trunk=$4
+    ip=$5
+    subnet=$6
+    netmask=$7
+    logfilepath=$8
+
+    echo "Entering add_port_to_container container:$container_name interface:$interface vlan:$vlan_tag trunk:$vlan_trunk ip:$ip subnet:$subnet netmask:$netmask logfilepath:$logfilepath" >> $logfilepath
+	ovs_port=$(ovs-vsctl --data=bare --no-heading --columns=name find interface external_ids:container_id=$container_name external_ids:container_iface=$interface)
+
+    vlan_trunk_list="[]"
+	if [ -n "$ovs_port" ]; then
+		if [ "$vlan_tag" == 0 ]; then
+            vlan_tag=$(ovs-vsctl get port $ovs_port tag)
+        fi
+        if [ "$subnet" == "null" ]; then 
+            subnet=ovs-vsctl get interface $ovs_port external_ids:subnet
+		fi
+        if [ "$netmask" == "null" ]; then 
+            netmask=ovs-vsctl get interface $ovs_port external_ids:netmask
+        fi
+        if [ "$ip" == "null" ]; then
+            ip=ovs-vsctl get interface $ovs_port external_ids:ip
+        fi     
+
+        vlan_trunk_list=$(ovs-vsctl get port $ovs_port trunks)
+        delete_port_from_container $container_name $interface $logfilepath			
+    fi
+
+	if [ "$ip" == 0 ]; then
+		/usr/local/cloud/ovs-docker add-port ovs-br1 $interface $container_name $subnet $netmask
+	else
+		/usr/local/cloud/ovs-docker add-port ovs-br1 $interface $container_name $subnet $netmask $ip --ipaddress=$ip 
+	fi
+    
+	if [ "$vlan_trunk_list" != "[]" ]; then
+		vlan_trunks=${vlan_trunk_list:1:-1}
+		vlan_trunks_allowed=$(echo $vlan_trunks | sed 's/ //g')
+		arr=($(echo $vlan_trunks_allowed | awk -F "," '{for (i=1;i<=NF;i++)print $i}'))
+		found=$(echo ${arr[@]} | grep -o "$vlan" | wc -l)
+		if [ "$found" == "0" -a "$vlan_trunk" != "0" ]; then
+			vlan_trunks_allowed="$vlan_trunks_allowed,$vlan_trunk"	
+		fi
+	else 
+		vlan_trunks_allowed=$vlan_trunk		
+	fi
+
+    if [ "$vlan_trunks_allowed" != "0" ]; then
+	    ovs-vsctl set port $ovs_port trunks=$vlan_trunks_allowed
+	    msg="Failed to allow the vlan in $container_name $vlan"
+	    status_check "$msg" "$logfilepath" 1
+	fi
+    if [ "$vlan_tag" != "0" ]; then
+	    /usr/local/cloud/ovs-docker set-vlan ovs_br1 $interface $container_name $vlan_tag
+	    msg="Failed to allow the vlan in $container_name $vlan_tag"
+	    status_check "$msg" "$logfilepath" 1
+    fi
+    echo "Exiting add_port_to_container container:$container_name interface:$interface vlan:$vlan_tag trunk:$vlan_trunk ip:$ip subnet:$subnet netmask:$netmask logfilepath:$logfilepath" >> $logfilepath
+}
+
+add_trunk_port_to_br() {
+	ovs_port=$1
+	vlan=$2
+    logfilepath=$3
+	echo "Entering add_trunk_port_to_br port:$ovs_port vlan:$vlan logfilepath:$logfilepath" >> $logfilepath
+    vlan_trunk_list="[]"
+    pr=$(ovs-vsctl show | grep tap_soft | wc -l)
+    if [ "$pr" != 0 ]; then
+		vlan_trunk_list=$(ovs-vsctl get port $ovs_port trunks)
+		delete_port_from_br $ovs_port $logfilepath
+	fi
+    
+	ovs-vsctl add-port ovs-br1 $ovs_port
+	
+	if [ "$vlan_trunk_list" != "[]" ]; then
+		vlan_trunks=${vlan_trunk_list:1:-1}
+		vlan_trunks_allowed=$(echo $vlan_trunks | sed 's/ //g')
+		arr=($(echo $vlan_trunks_allowed | awk -F "," '{for (i=1;i<=NF;i++)print $i}'))
+		found=$(echo ${arr[@]} | grep -o "$vlan" | wc -l)
+		if [ "$found" == "0" -a "$vlan" != "0" ]; then
+			vlan_trunks_allowed="$vlan_trunks_allowed,$vlan"	
+		fi
+	else 
+		vlan_trunks_allowed=$vlan		
+	fi
+
+    echo $vlan_trunks_allowed
+    if [ "$vlan_trunks_allowed" != "0" ]; then
+	    ovs-vsctl set port $ovs_port trunks=$vlan_trunks_allowed
+	    msg="Failed to allow the vlan in $container_name $vlan"
+	    status_check "$msg" "$logfilepath" 1
+    fi
+	echo "Exiting add_trunk_port_to_br port:$ovs_port vlan:$vlan logfilepath:$logfilepath" >> $logfilepath
+}
+
+add_bridge_trunk_port_to_br() {
+	ovs_port=$1
+	vlan=$2
+    logfilepath=$3
+	echo "Entering add_bridge_trunk_port_to_br port:$ovs_port vlan:$vlan logfilepath:$logfilepath" >> $logfilepath
+   
+    vlan_trunk_list="[]"
+    
+    if [ "$vlan_trunk_list" != "[]" ]; then
+		vlan_trunks=${vlan_trunk_list:1:-1}
+		vlan_trunks_allowed=$(echo $vlan_trunks | sed 's/ //g')
+		arr=($(echo $vlan_trunks_allowed | awk -F "," '{for (i=1;i<=NF;i++)print $i}'))
+		found=$(echo ${arr[@]} | grep -o "$vlan" | wc -l)
+		if [ "$found" == "0" -a "$vlan" != "0" ]; then
+			vlan_trunks_allowed="$vlan_trunks_allowed,$vlan"	
+		fi
+	else 
+		vlan_trunks_allowed=$vlan		
+	fi
+	
+    if [ "$vlan_trunks_allowed" != "0" ]; then
+	    ovs-vsctl set port $ovs_port trunks=$vlan_trunks_allowed
+	    msg="Failed to allow the vlan in $container_name $vlan"
+	    status_check "$msg" "$logfilepath" 1
+	fi
+    echo "Exiting add_bridge_trunk_port_to_br port:$ovs_port vlan:$vlan logfilepath:$logfilepath" >> $logfilepath
+}
+
+allow_container_vlan_trunks() {
+    container_name=$1
+    interface=$2
+    vlan=$3
+    logfilepath=$4
+    echo "Entering allow_container_vlan_trunks container_name:$container_name interface:$interface vlan:$vlan logfilepath:$logfilepath" >> $logfilepath
+    ovs_trunk_port=ovs-vsctl --data=bare --no-heading --columns=name find interface external_ids:container_id=$container_name external_ids:container_iface=$interface
+	if [ -z "$ovs_trunk_port" ]; then
+        echo "Failed to find any attached port" \
+                 "for CONTAINER=cloud_vpn_dhcp_server and INTERFACE=$interface" >> $logfilepath
+		exit -1
+    fi
+    
+    vlan_trunk_list=$(ovs-vsctl get port $ovs_trunk_port trunks)
+    if [ "$vlan_trunk_list" == "[]" ]; then
+		vlan_trunks_allowed=$vlan
+	else
+		vlan_trunks=${vlan_trunk_list:1:-1}
+		vlan_trunks_allowed=$(echo $vlan_trunks | sed 's/ //g')
+		arr=($(echo $vlan_trunks_allowed | awk -F "," '{for (i=1;i<=NF;i++)print $i}'))
+		found=$(echo ${arr[@]} | grep -o "$vlan" | wc -l)
+		if [ $found == "0" -a $vlan != "0" ]; then
+			vlan_trunks_allowed="$vlan_trunks_allowed,$vlan"	
+		fi
+    fi
+    if [ "$vlan_trunk_allowed" != "0" ]; then
+	    ovs-vsctl set port $ovs_trunk_port trunks=$vlan_trunks_allowed
+	    msg="Failed to allow the vlan in vpn server $vlan"
+	    status_check "$msg" "$logfilepath" 1
+    fi
+    echo "Exiting allow_container_vlan_trunks container_name:$container_name interface:$interface vlan:$vlan logfilepath:$logfilepath" >> $logfilepath
+}
+
+allow_bridge_vlan_trunks() {
+    ovs_trunk_port=$1
+    vlan=$2
+    logfilepath=$3
+    vlan_trunk_list=$(ovs-vsctl get port $ovs_trunk_port trunks)
+    echo "Entering allow_bridge_vlan_trunks ovs_trunk_port:$ovs_trunk_port vlan:$vlan logfilepath:$logfilepath vlan_trunk_list:$vlan_trunk_list" >> $logfilepath
+    if [ "$vlan_trunk_list" == "[]" ]; then
+		vlan_trunks_allowed=$vlan
+	else
+		vlan_trunks=${vlan_trunk_list:1:-1}
+		vlan_trunks_allowed=$(echo $vlan_trunks | sed 's/ //g')
+    	arr=($(echo $vlan_trunks_allowed | awk -F "," '{for (i=1;i<=NF;i++)print $i}'))
+		found=$(echo ${arr[@]} | grep -o "$vlan" | wc -l)
+		if [ "$found" == "0" -a "$vlan" != "0" ]; then
+			vlan_trunks_allowed="$vlan_trunks_allowed,$vlan"	
+		fi
+	fi
+    if [ "$vlan_trunks_allowed" != "0" ]; then
+        ovs-vsctl set port $ovs_trunk_port trunks=$vlan_trunks_allowed
+	    msg="Failed to allow the vlan in vpn server $vlan"
+	    status_check "$msg" "$logfilepath" 1
+    fi
+    echo "Exiting allow_bridge_vlan_trunks ovs_trunk_port:$ovs_trunk_port vlan:$vlan logfilepath:$logfilepath vlan_trunk_list:$vlan_trunk_list" >> $logfilepath
+}
+
+add_route() {
+    subnet=$1
+    netmask=$2
+    container_name=$3
+    logfilepath=$4
+    echo "Entering add_route subnet:$subnet container_name:$container_name logfilepath:$logfilepath" >> $logfilepath
+    route_present=$(docker exec -it $container_name route | grep $subnet | wc -l)
+	if [ "$route_present" == 0 ]; then
+		gateway=$(docker exec -it $container_name ip addr show dev eth0 | grep inet | awk -F" " '{print $2}'| awk -F"/" '{print $1}')
+		prefix=$(ipcalc -n $subnet $netmask | grep Netmask | awk -F"=" '{print $2}' | awk -F" " '{print $1}')
+        docker exec -it $container_name ip route add "$subnet/$prefix" via $gateway dev eth0
+	fi
+	msg="Failed to add the route in dhcp server"
+	status_check "$msg" "$logfilepath" 1
+    echo "Exiting add_route subnet:$subnet container_name:$container_name logfilepath:$logfilepath" >> $logfilepath
+}
+  
+start_vpn_bridge() {
+	share=$1	
+	public_ip=$2
+	vlan=$3
+    logfile=$4
+	logfilepath="$share/logs/$logfile"
+
+    echo "Enetering start_vpn_bridge share:$share public_ip:$public_ip logfile:$logfile" >> $logfilepath
+	/usr/local/cloud/cloud_vpn_bridge_setup -g $public_ip -l $logfilepath -d $share
+	status_check "$msg" "$logfilepath" 1
+   
+	add_trunk_port_to_br tap_soft 0 $logfilepath 
+	msg="Failed to configure the cloud vpn bridge" 
+	status_check "$msg" "$logfilepath" 0
+    allow_bridge_vlan_trunks ovs-br1 $vlan $logfilepath 
+	allow_bridge_vlan_trunks tap_soft $vlan $logfilepath    
+    echo "Exiting start_vpn_bridge share:$share public_ip:$public_ip logfile:$logfile" >> $logfilepath
+}    
+
+start_vpn_server() {
+    share=$1	
+	public_ip=$2
+	logfile=$3
+	logfilepath="$share/logs/$logfile"
+
+    echo "Enetering start_vpn_server share:$share public_ip:$public_ip logfile:$logfile" >> $logfilepath
+	/usr/local/cloud/cloud_vpn_server_setup -g $public_ip -l $logfilepath -d $share
+	status_check "$msg" "$logfilepath" 0
+   
+	add_trunk_port_to_br tap_soft 0 $logfilepath 
+    msg="Failed to configure the cloud vpn server" 
+	status_check "$msg" "$logfilepath" 1
+    echo "Exiting start_vpn_server share:$share public_ip:$public_ip logfile:$logfile" >> $logfilepath
+}    
+
+start_dhcp_server() {
+	arg_dict=$1
+    subnet=${arg_dict["subnet"]}
+    netmask=${arg_dict["netmask"]}
+    share=${arg_dict["share"]}
+	image=${arg_dict["container_image"]}
+	logfile=${arg_dict["logfile"]}
+	subnet_start=${arg_dict["range_start"]}
+	subnet_end=${arg_dict["range_end"]}
+	logfilepath="$share/logs/$logfile"
+
+    echo "Entering start_dhcp_server subnet:$subnet netmask:$netmask share:$share image:$image logfile:$logfile subnet_start:$subnet_start subnet_end:$subnet_end" >> $logfilepath
+    docker stop $DHCP_SERVER_CONTAINER_NAME >> $logfilepath
+    docker rm $DHCP_SERVER_CONTAINER_NAME >> $logfilepath
+    docker run --cap-add=NET_ADMIN --name=$DHCP_SERVER_CONTAINER_NAME -v $share:$WORKDIR -itd $image >> $logfilepath
+	msg="Failed to start the cloud vpn/dhcp server" 
+    status_check "$msg" "$logfilepath" 1
+    docker start $DHCP_SERVER_CONTAINER_NAME >> $logfilepath	
+    docker exec -it $DHCP_SERVER_CONTAINER_NAME $WORKDIR/dhcp_server/cloud_dhcp_server_subnet_add -s $subnet -n $netmask -a $subnet_start -z $subnet_end -l $logfile  
+	msg="Failed to configure the cloud dhcp server" 
+    status_check "$msg" "$logfilepath" 0
+    running=$(docker exec -it $DHCP_SERVER_CONTAINER_NAME ps aux | grep dhcp | wc -l)
+    if [ "$running" != 1 ]; then
+        msg="Dhcp server is not running"
+        status_check "$msg" "$logfilepath" 1
+    fi     
+    echo "Exiting start_dhcp_server subnet:$subnet netmask:$netmask share:$share image:$image logfile:$logfile subnet_start:$subnet_start subnet_end:$subnet_end" >> $logfilepath
+}    
+
+start_dhcp_relay() {
+	arg_dict=$1
+   	subnet=${arg_dict["subnet"]}
+  	netmask=${arg_dict["netmask"]}
+   	share=${arg_dict["share"]}
+  	image=${arg_dict["container_image"]}
+  	vlan=${arg_dict["vlan"]}
+ 	logfile=${arg_dict["logfile"]}
+   	logfilepath="$share/logs/$logfile"
+  	cust_id=${arg_dict["cust_id"]}
+    subnet_start=${arg_dict["range_start"]}
+    subnet_end=${arg_dict["range_end"]}
+  	ip=${arg_dict["ip"]}
+    
+    echo "Entering start_dhcp_relay subnet:$subnet netmask:$netmask share:$share image:$image vlan:$vlan logfile:$logfile cust_id:$cust_id subnet_start:$subnet_start subnet_end:$subnet_end" >> $logfilepath
+    docker exec -it $DHCP_SERVER_CONTAINER_NAME $WORKDIR/dhcp_server/cloud_dhcp_server_subnet_add -s $subnet -n $netmask -a $subnet_start -z $subnet_end -l $logfile
+	msg="Failed to configure the cloud dhcp server" 
+    status_check "$msg" "$logfilepath" 0
+
+    docker stop "$DHCP_RELAY_CONTAINER_NAME-$cust_id" >> $logfilepath
+    docker rm "$DHCP_RELAY_CONTAINER_NAME-$cust_id" >> $logfilepath
+    docker run --cap-add=NET_ADMIN --name="$DHCP_RELAY_CONTAINER_NAME-$cust_id" -v $share:$WORKDIR -itd $image >> $logfilepath
+	msg="Failed to start the cloud dhcp relay" 
+	status_check "$msg" "$logfilepath" 1
+   
+    docker start "$DHCP_RELAY_CONTAINER_NAME-$cust_id" >> $logfilepath
+	
+    add_port_to_container "$DHCP_RELAY_CONTAINER_NAME-$cust_id" "eth1" $vlan "0" $ip $subnet $netmask $logfilepath
+
+	gateway=$(docker exec -it $DHCP_SERVER_CONTAINER_NAME ip addr show dev eth0 | grep inet | awk -F" " '{print $2}'| awk -F"/" '{print $1}')
+	
+    docker exec -it "$DHCP_RELAY_CONTAINER_NAME-$cust_id" $WORKDIR/dhcp_relay/cloud_dhcp_relay_setup -s $subnet -n $netmask -i "eth1" -a $ip -g $gateway -l $logfile 
+	msg="Failed to configure the cloud dhcp relay" 
+	status_check "$msg" "$logfilepath" 0
+
+    allow_bridge_vlan_trunks ovs-br1 $vlan $logfilepath 
+	allow_bridge_vlan_trunks tap_soft $vlan $logfilepath    
+    add_route $subnet $netmask $DHCP_SERVER_CONTAINER_NAME $logfilepath 
+
+    echo "Exiting start_dhcp_relay subnet:$subnet netmask:$netmask share:$share image:$image vlan:$vlan logfile:$logfile cust_id:$cust_id subnet_start:$subnet_start subnet_end:$subnet_end" >> $logfilepath
+}
+ 
+restart_vpn_bridge() {
+	share=$1	
+	public_ip=$2
+    logfile=$3
+	logfilepath="$share/logs/$logfile"
+
+    echo "Entering restart_vpn_bridge share:$share public_ip:$public_ip logfile:$logfile" >> $logfilepath
+	/usr/local/cloud/cloud_vpn_bridge_setup -g $public_ip -l $logfilepath -d $share
+	status_check "$msg" "$logfilepath" 1
+   
+	add_trunk_port_to_br tap_soft 0 $logfilepath 
+	status_check "$msg" "$logfilepath" 0
+
+    echo "Exiting restart_vpn_bridge share:$share public_ip:$public_ip logfile:$logfile" >> $logfilepath
+}    
+
+restart_vpn_server() {
+	share=$1	
+	public_ip=$2
+    logfile=$3
+	logfilepath="$share/logs/$logfile"
+
+    echo "Entering start_vpn_server share:$share public_ip:$public_ip logfile:$logfile" >> $logfilepath
+	/usr/local/cloud/cloud_vpn_server_setup -g $public_ip -l $logfilepath -d $share
+	status_check "$msg" "$logfilepath" 1
+   
+	add_trunk_port_to_br tap_soft 0 $logfilepath 
+	status_check "$msg" "$logfilepath" 0
+
+    echo "Exiting start_vpn_server share:$share public_ip:$public_ip logfile:$logfile" >> $logfilepath
+}    
+
+restart_dhcp_server() {
+    arg_dict=$1
+    subnet=${arg_dict["subnet"]}
+    netmask=${arg_dict["netmask"]}
+    share=${arg_dict["share"]}
+	name=${arg_dict["container_name"]}
+	logfile=${arg_dict["logfile"]}
+	subnet_start=${arg_dict["range_start"]}
+	subnet_end=${arg_dict["range_end"]}
+	
+    logfilepath="$share/logs/$logfile"
+
+    echo "Entering restart_dhcp_server subnet:$subnet netmask:$netmask share:$share image:$image logfile:$logfile subnet_start:$subnet_start subnet_end:$subnet_end" >> $logfilepath
+    
+    docker start $name >> $logfilepath 
+	msg="Failed to start the cloud vpn/dhcp server" 
+	status_check "$msg" "$logfilepath" 1
+    
+	docker exec -it $name $WORKDIR/dhcp_server/cloud_dhcp_server_setup -l $logfile
+	msg="Failed to configure the cloud dhcp server" 
+    status_check "$msg" "$logfilepath" 0
+
+    running=$(docker exec -it $DHCP_SERVER_CONTAINER_NAME ps aux | grep dhcp | wc -l)
+    if [ "$running" != 1 ]; then
+        msg="Dhcp server is not running"
+        status_check "$msg" "$logfilepath" 1
+    fi     
+    echo "Exiting restart_dhcp_server subnet:$subnet netmask:$netmask share:$share image:$image logfile:$logfile subnet_start:$subnet_start subnet_end:$subnet_end" >> $logfilepath
+}    
+
+restart_dhcp_relay() {
+    arg_dict=$1
+   	subnet=${arg_dict["subnet"]}
+  	netmask=${arg_dict["netmask"]}
+   	share=${arg_dict["share"]}
+  	name=${arg_dict["container_name"]}
+  	vlan=${arg_dict["vlan"]}
+ 	logfile=${arg_dict["logfile"]}
+   	logfilepath="$share/logs/$logfile"
+  	cust_id=${arg_dict["cust_id"]}
+    subnet_start=${arg_dict["range_start"]}
+    subnet_end=${arg_dict["range_end"]}
+  	ip=${arg_dict["ip"]}
+
+    echo "Entering restart_dhcp_relay subnet:$subnet netmask:$netmask share:$share image:$image vlan:$vlan logfile:$logfile cust_id:$cust_id subnet_start:$subnet_start subnet_end:$subnet_end" >> $logfilepath
+    docker start $name >> $logfilepath 
+	msg="Failed to start the cloud dhcp relay" 
+	status_check "$msg" "$logfilepath" 1
+	
+	ovs_port=$(ovs-vsctl --data=bare --no-heading --columns=name find interface external_ids:container_id=$name external_ids:container_iface="eth1")
+	if [ -z "$ovs_port" ]; then
+        echo "Failed to find any attached port" \
+                 "for CONTAINER=cloud_vpn_dhcp_relay and INTERFACE=eth1" >> $logfilepath
+		exit -1
+    fi
+   
+	subnet=$(ovs-vsctl get interface $ovs_port external_ids:subnet)
+	netmask=$(ovs-vsctl get interface $ovs_port external_ids:netmask)
+    vlan=$(ovs-vsctl get port $ovs_port tag)
+    ip=$(ovs-vsctl get interface $ovs_port external_ids:ip)
+	subnet=${subnet:1:-1}
+    netmask=${netmask:1:-1}
+    ip=${ip:1:-1}
+	add_port_to_container $name "eth1" $vlan "0" $ip $subnet $netmask $logfilepath
+    gateway=$(docker exec -it $DHCP_SERVER_CONTAINER_NAME ip addr show dev eth0 | grep inet | awk -F" " '{print $2}'| awk -F"/" '{print $1}')
+    docker exec -it "$DHCP_RELAY_CONTAINER_NAME-$cust_id" $WORKDIR/dhcp_relay/cloud_dhcp_relay_setup -s $subnet -n $netmask -i "eth1" -a $ip -g $gateway -l $logfile 
+	msg="Failed to configure the cloud dhcp relay" 
+	status_check "$msg" "$logfilepath" 0
+    add_route $subnet $netmask $DHCP_SERVER_CONTAINER_NAME $logfilepath
+
+    echo "Exiting restart_dhcp_relay subnet:$subnet netmask:$netmask share:$share image:$image vlan:$vlan logfile:$logfile cust_id:$cust_id subnet_start:$subnet_start subnet_end:$subnet_end" >> $logfilepath
+}
+  

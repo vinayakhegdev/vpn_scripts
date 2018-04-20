@@ -1,0 +1,11 @@
+#!/bin/bash
+
+while true
+    do
+        vpnserver_running=$(ps aux | grep vpnserver | wc -l)
+        if [ $vpnserver_running -eq 1 ] 
+            then
+                /usr/local/bin/vpnserver start
+        fi          
+        sleep 120
+    done

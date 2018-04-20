@@ -1,0 +1,7 @@
+2018-01-09 12:35:10.589 ------------------------------------------------------
+2018-01-09 12:35:10.589 SoftEther VPN Client Version 4.24 Build 9651   (English)
+2018-01-09 12:35:10.589 Compiled 2017/10/23 01:52:32 by yagi at pc33
+2018-01-09 12:35:10.589 The SoftEther VPN Client Engine has been started.
+2018-01-09 12:35:10.589 Loading configuration file...
+2018-01-09 12:35:10.599 Configuration file does not exist. Applying the initial settings.
+2018-01-09 12:35:10.599 Monitoring the directory "/home/vinayak/work/cloud/common/vpn_scripts/vpn_client/vpnclient". If the amount of available free disk space becomes less than 100.00 MBytes, the backup files for log files and configurations that are saved on the sub-directories of this directory will be automatically deleted in the order of oldest first. The amount of free disk space that determines when to start deletion can be modified by changing the "AutoDeleteCheckDiskFreeSpaceMin" item in the configuration file.

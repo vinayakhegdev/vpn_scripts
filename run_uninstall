@@ -1,0 +1,23 @@
+#!/bin/bash
+
+arg_count=0
+while getopts "v:" opt; 
+do
+    case $opt in
+        v)
+            share=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+    esac
+done
+
+if [ $arg_count != 1 ]
+    then
+        usage
+        exit
+fi
+
+rm -rf/usr/local/cloud/
+rm -rf $share
+
+

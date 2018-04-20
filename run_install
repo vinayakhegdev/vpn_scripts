@@ -1,0 +1,63 @@
+#!/bin/bash
+
+arg_count=0
+
+usage() {
+    echo "./run_install -v <share>"
+    exit -1
+}
+
+while getopts "v:" opt; 
+do
+    case $opt in
+        v)
+            share=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+    esac
+done
+
+if [ $arg_count != 1 ]
+    then
+        usage
+        exit
+fi
+
+mkdir /usr/local/cloud/
+
+cp -f startup/add_nic /usr/local/cloud/
+cp -f startup/network_service /usr/local/cloud/
+cp -f startup/ovs-docker /usr/local/cloud/
+cp -f startup/restart_dhcp_relay /usr/local/cloud/
+cp -f startup/restart_dhcp_server /usr/local/cloud/ 
+cp -f startup/restart_vpn_server /usr/local/cloud/
+cp -f startup/restart_vpn_bridge /usr/local/cloud/
+cp -f startup/start_dhcp_relay /usr/local/cloud/
+cp -f startup/start_dhcp_server /usr/local/cloud/
+cp -f startup/start_vpn_server /usr/local/cloud/
+cp -f startup/start_vpn_bridge /usr/local/cloud/
+cp -f startup/allow_vlan_trunks /usr/local/cloud/
+cp -f startup/cloud_net_utils.py /usr/local/cloud/
+cp -f vpn_server/cloud_vpn_server_mon /usr/local/cloud/
+cp -f vpn_server/cloud_vpn_server_setup /usr/local/cloud/
+cp -f vpn_bridge/cloud_vpn_bridge_setup /usr/local/cloud/
+cp -f vpn_bridge/cloud_vpn_bridge_mon /usr/local/cloud/
+
+mkdir $share
+mkdir $share/bin
+mkdir $share/dhcp_server/
+mkdir $share/dhcp_relay/
+mkdir $share/logs/
+
+cp -f dhcp_server/cloud_dhcp_server_setup $share/dhcp_server/
+cp -f dhcp_server/cloud_dhcp_server_start $share/dhcp_server/
+cp -f dhcp_server/cloud_dhcp_server_subnet_add $share/dhcp_server/
+cp -f dhcp_server/conf/* $share/dhcp_server/
+
+cp -f dhcp_relay/cloud_dhcp_relay_setup $share/dhcp_relay/
+cp -f dhcp_relay/cloud_dhcp_relay_start $share/dhcp_relay/
+cp -f dhcp_relay/conf/* $share/dhcp_relay/
+
+cp -rf src/vpn_server_src/* $share/bin/
+
+

@@ -1,0 +1,141 @@
+#!/bin/bash
+
+declare -A arg_dict
+declare -A out_dict
+
+PASSWORD="secret@123"
+USERNAME="cloud"
+HUB="cloud"
+SHARE=""
+WORKDIR="/usr/local/cloud"
+
+create_local_bridge() {
+    logfile=${arg_dict["logfile"]}
+    statusfile="$SHARE/status.txt"
+    echo "Entering BridgeCreate" >> $logfile
+    $WORKDIR/vpnserver/vpncmd /SERVER 127.0.0.1:1194 /PASSWORD:$PASSWORD /OUT:/tmp/status.txt /CMD:BridgeCreate cloud /DEVICE:soft /TAP:yes > /dev/null 2>&1
+    echo "sleeping for 30 sec" >> $logfile
+    sleep 30
+    ifconfig tap_soft up
+    $WORKDIR/vpnserver/vpncmd /SERVER 127.0.0.1:1194 /PASSWORD:$PASSWORD /OUT:/tmp/status.txt /CMD:BridgeList > /dev/null 2>&1
+    status=$(grep "cloud" /tmp/status.txt | grep "Operating" | wc -l)
+    if [ $status -eq 0 ] 
+        then
+			out_dict["status"]="FAILURE"
+			out_dict["data"]="eth1 device is not online"
+			echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" >> $logfile
+            echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" > $statusfile
+            exit -1
+    fi          
+    echo "Exiting BridgeCreate" >> $logfile
+}
+
+assign_promisc() {
+    logfile=${arg_dict["logfile"]}
+    echo "Entering promisc assignment" >> $logfile
+    ip link set tap_soft promisc on
+    echo "Exiting promisc assignment" >> $logfile
+}
+
+cascade_create() {
+    conn_name="cs1"
+	server=${arg_dict["public_ip"]}":1194"
+	logfile=${arg_dict["logfile"]}
+    statusfile="$SHARE/status.txt"
+    echo "Entering CascadeCreate" >> $logfile
+    $WORKDIR/vpnserver/vpncmd /SERVER 127.0.0.1:1194 /PASSWORD:$PASSWORD /OUT:/tmp/status.txt /CMD:CascadeOffline $conn_name > /dev/null 2>&1
+    $WORKDIR/vpnserver/vpncmd /SERVER 127.0.0.1:1194 /PASSWORD:$PASSWORD /OUT:/tmp/status.txt /CMD:CascadeDelete $conn_name > /dev/null 2>&1
+    $WORKDIR/vpnserver/vpncmd /SERVER 127.0.0.1:1194 /PASSWORD:$PASSWORD /OUT:/tmp/status.txt /CMD:CascadeCreate $conn_name /SERVER:$server /HUB:$HUB /USERNAME:$USERNAME > /dev/null 2>&1 
+	#check status
+    $WORKDIR/vpnserver/vpncmd /SERVER 127.0.0.1:1194 /PASSWORD:$PASSWORD /OUT:/tmp/status.txt /CMD:CascadeList > /dev/null 2>&1
+	status=$(grep "Setting Name" /tmp/status.txt | grep $conn_name | wc -l)
+	if [ $status -eq 0 ]
+		then
+			out_dict["status"]="FAILURE"
+			out_dict["data"]="Failed to create the account"
+			echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" >> $logfile
+            echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" > $statusfile
+            exit -1
+	fi
+    echo "Exiting CascadeCreate" >> $logfile
+}
+
+assign_password() {
+    logfile=${arg_dict["logfile"]}         
+    echo "Enterning CascadePasswordSet\n" >> $logfile
+	conn_name="cs1"
+	conn_type="standard"
+	$WORKDIR/vpnsserver/vpncmd /SERVER 127.0.0.1:1194 /PASSWORD:$PASSWORD /OUT:/tmp/status.txt /CMD:CascadePasswordSet $conn_name /PASSWORD:$PASSWORD /TYPE:$conn_type > /dev/null 2>&1 
+    echo "Exiting CascadePasswordSet" >> $logfile
+}
+
+cascade_connect() {
+    logfile=${arg_dict["logfile"]}
+    echo "Enterning CascadeConnect" >> $logfile
+	conn_name="cs1"
+	$WORKDIR/vpnserver/vpncmd /SERVER 127.0.0.1:1194 /PASSWORD:$PASSWORD /OUT:/tmp/status.txt /CMD:CascadeOnline $conn_name > /dev/null 2>&1
+    echo "Exiting CascadeConnect" >> $logfile
+}
+
+cascade_status() {
+    logfile=${arg_dict["logfile"]}
+    statusfile="$SHARE/status.txt"
+    echo "Enterning CascadeList" >> $logfile
+    conn_name="cs1"
+    $WORKDIR/vpnserver/vpncmd /SERVER 127.0.0.1:1194 /PASSWORD:$PASSWORD /OUT:/tmp/status.txt /CMD:CascadeList $conn_name > /dev/null 2>&1
+    status=$(grep "Online" /tmp/status.txt | wc -l)
+	if [ $status -eq 0 ]
+		then
+			out_dict["status"]="FAILURE"
+			out_dict["data"]="Failed to connect the server"
+			echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" >> $logfile
+            echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" > $statusfile
+            exit -1
+	fi
+    echo "Exiting AccountStatusGet" >> $logfile
+}
+
+
+usage() {
+    echo "Usage: ./cloud_vpn_bridge_setup -g <public_ip> -l <logfile> -d <share>"
+}    
+
+arg_count=0
+while getopts "g:l:d:" opt; 
+do
+    case $opt in
+        g)
+            arg_dict["public_ip"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+    	l)
+			arg_dict["logfile"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+	    d)
+            SHARE=$OPTARG
+            WORKDIR="$SHARE/bin"
+            arg_count=$(($arg_count+1))
+            ;;
+    esac
+done
+
+if [ $arg_count != 3 ]
+    then
+        usage
+        exit -1
+fi
+$WORKDIR/vpnserver/vpnserver stop
+$WORKDIR/vpnserver/vpnserver start
+echo "Sleeping for 30 sec" >> ${arg_dict["logfile"]}
+sleep 30
+create_local_bridge
+assign_promisc
+cascade_create
+assign_password
+cascade_connect
+cascade_status
+
+echo "VPN bridge is connected to ${arg_dict["public_ip"]}" >> ${arg_dict["logfile"]}
+/usr/local/cloud/cloud_vpn_bridge_mon &
+

@@ -1,0 +1,45 @@
+#!/bin/sh
+
+WORKDIR="/cloud_mnt/dhcp_relay"
+# It is not safe to start if we don't have a default configuration...
+if [ ! -f "$WORKDIR/isc-dhcp-relay" ]; then
+	echo "$WORKDIR/isc-dhcp-relay does not exist! - Aborting..."
+	exit 1
+fi
+
+# Source init functions
+. /lib/lsb/init-functions
+
+# Read init script configuration (interfaces the daemon should listen on
+# and the DHCP server we should forward requests to.)
+[ -f "$WORKDIR/isc-dhcp-relay" ] && . "$WORKDIR/isc-dhcp-relay"
+
+# Build command line for interfaces (will be passed to dhrelay below.)
+IFCMD=""
+if test "$INTERFACES" != ""; then
+	for I in $INTERFACES; do
+		IFCMD=${IFCMD}"-i "${I}" "
+	done
+fi
+
+DHCRELAYPID=/var/run/dhcrelay.pid
+
+case "$1" in
+	start)
+		start-stop-daemon --start --quiet --pidfile $DHCRELAYPID \
+			--exec /usr/sbin/dhcrelay -- -q $OPTIONS $IFCMD $SERVERS
+		;;
+	stop)
+		start-stop-daemon --stop --quiet --pidfile $DHCRELAYPID
+		;;
+	restart | force-reload)
+		$0 stop
+		sleep 2
+		$0 start
+		;;
+	*)
+		echo "Usage: /etc/init.d/isc-dhcp-relay {start|stop|restart|force-reload}"
+		exit 1 
+esac
+
+exit 0

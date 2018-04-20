@@ -1,0 +1,30 @@
+#!/bin/bash
+
+declare -A arg_dict
+declare -A out_dict
+
+WORKDIR="/cloud_mnt"
+usage() {
+    echo "Usage: ./cloud_dhcp_server_setup -l <logfile>"
+}    
+
+arg_count=0
+while getopts "l:" opt; 
+do
+    case $opt in
+	    l)
+			arg_dict["logifle"]="/cloud_mnt/logs/$OPTARG"
+            arg_count=$(($arg_count+1))
+    		;;
+	esac
+done
+
+if [ $arg_count != 1 ]
+    then
+        usage
+        exit -1
+fi
+
+$WORKDIR/dhcp_server/cloud_dhcp_server_start stop
+$WORKDIR/dhcp_server/cloud_dhcp_server_start start
+

@@ -1,0 +1,151 @@
+#!/bin/bash
+
+declare -A arg_dict
+declare -A out_dict
+
+create_nic_adaptor() {
+    echo "Enterning NicCreate"
+    logfile=${arg_dict["logfile"]}             
+	/usr/local/vpnclient/vpncmd /CLIENT 127.0.0.1:1194 /OUT:/tmp/status.txt /CMD:NicCreate cloud > /dev/null 2>&1
+	#check status
+	/usr/local/vpnclient/vpncmd /CLIENT 127.0.0.1:1194 /OUT:/tmp/status.txt /CMD:NicList > /dev/null 2>&1
+	count=$(sed -n '/---/,$p' /tmp/status.txt | sed '1d;$d' | sed '$d' | awk -F'|' '{print $2}' | grep "cloud" | wc -l)
+	enabled=$(sed -n '/---/,$p' /tmp/status.txt | sed '1d;$d' | sed '$d' | awk -F'|' '{print $2}' | grep -1 "cloud" | grep "Enabled" | wc -l)
+	if [ $count -eq 0 -o $enabled -eq 0 ]
+		then
+            out_dict["status"]="FAILURE"
+			out_dict["data"]="Failed to create the virtual adaptor"
+			echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" > $logfile
+            exit -1
+	fi
+    echo "Exiting NicCreate"
+}
+
+create_account() {
+    echo "Enterning AccountCreate"
+    conn_name="cs1"
+	server=${arg_dict["public_ip"]}":1194"
+	hub=${arg_dict["cascade_bridge"]}
+	user=${arg_dict["user"]}
+	nic="cloud"
+	logfile=${arg_dict["logfile"]}
+    /usr/local/vpnclient/vpncmd /CLIENT 127.0.0.1:1194 /OUT:/tmp/status.txt /CMD:AccountDisconnect $conn_name > /dev/null 2>&1
+    /usr/local/vpnclient/vpncmd /CLIENT 127.0.0.1:1194 /OUT:/tmp/status.txt /CMD:AccountDelete $conn_name > /dev/null 2>&1
+    /usr/local/vpnclient/vpncmd /CLIENT 127.0.0.1:1194 /OUT:/tmp/status.txt /CMD:AccountCreate $conn_name /SERVER:$server /HUB:$hub /USERNAME:$user /NICNAME:$nic > /dev/null 2>&1 
+	#check status
+    /usr/local/vpnclient/vpncmd /CLIENT 127.0.0.1:1194 /OUT:/tmp/status.txt /CMD:AccountList > /dev/null 2>&1
+	status=$(grep "VPN Connection Setting Name" /tmp/status.txt | grep $conn_name | wc -l)
+	if [ $status -eq 0 ]
+		then
+			out_dict["status"]="FAILURE"
+			out_dict["data"]="Failed to create the account"
+			echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" > $logfile
+            exit -1
+	fi
+    echo "Exiting AccountCreate"
+}
+
+assign_password() {
+    echo "Enterning AccountPasswordSet\n"
+	conn_name="cs1"
+	passowrd=${arg_dict["password"]}
+	conn_type="standard"
+	/usr/local/vpnclient/vpncmd /CLIENT 127.0.0.1:1194 /OUT:/tmp/status.txt /CMD:AccountPasswordSet $conn_name /PASSWORD:$passowrd /TYPE:$conn_type > /dev/null 2>&1 
+    echo "Exiting AccountPasswordSet"
+}
+
+account_connect() {
+    echo "Enterning AccountConnect"
+	conn_name="cs1"
+	/usr/local/vpnclient/vpncmd /CLIENT 127.0.0.1:1194 /OUT:/tmp/status.txt /CMD:AccountConnect $conn_name > /dev/null 2>&1
+    echo "Exiting AccountConnect"
+}
+
+account_status() {
+    echo "Enterning AccountStatusGet"
+    conn_name="cs1"
+    /usr/local/vpnclient/vpncmd /CLIENT 127.0.0.1:1194 /OUT:/tmp/status.txt /CMD:AccountStatusGet $conn_name > /dev/null 2>&1
+	before_in_broadcast=$(grep "Incoming Broadcast Packets" /tmp//status.txt  | awk -F "|" '{print $2}' | awk -F " " '{print $1}' | sed 's/ //g')
+	#check status
+    echo "Sleeping for 120 seconds"
+    sleep 120
+    /usr/local/vpnclient/vpncmd /CLIENT 127.0.0.1:1194 /OUT:/tmp/status.txt /CMD:AccountStatusGet $conn_name > /dev/null 2>&1
+	after_in_broadcast=$(grep "Incoming Broadcast Packets" /tmp//status.txt  | awk -F "|" '{print $2}' | awk -F " " '{print $1}' | sed 's/ //g')
+	if [ $before_in_broadcast -eq $after_in_broadcast ] 
+		then
+			out_dict["status"]="FAILURE"
+			out_dict["data"]="Broadcast pacckets are not coming, something is wrong"
+			echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" > $logfile
+            exit -1
+	fi
+    echo "Exiting AccountStatusGet"
+}
+
+assign_ip() {
+    echo "Enterning AssignIp"
+    ip_addr=${arg_dict["local_ip"]}
+    nic="vpn_cloud"
+    ip addr add dev $nic $ip_addr 
+	ifconfig $nic up
+    echo $ip_addr >> /etc/cloud/adaptor_ip.txt
+    echo "Exiting AssignIp"
+}
+
+usage() {
+    echo "Usage: ./cloud_vpn_client_setup.sh -s <subnet> -i <local_ip> -g <public ip> -u <user> -p <password> -l <logfile>"
+}    
+
+arg_count=0
+
+while getopts "s:i:g:u:p:l:" opt; 
+do
+    case $opt in
+        s)
+            arg_dict["subnet"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+        i)
+            arg_dict["local_ip"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+        g)
+            arg_dict["public_ip"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+		u)
+			arg_dict["user"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+		p)
+			arg_dict["password"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+    	l)
+			arg_dict["logfile"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+	esac
+done
+if [ $arg_count != 6 ]
+    then
+        usage
+        exit
+fi
+
+arg_dict["cascade_bridge"]="cloud"
+if [ -f ${arg_dict["logfile"]} ]
+    then
+        rm ${arg_dict["logfile"]}
+fi
+/usr/local/vpnclient/vpnclient stop
+/usr/local/vpnclient/vpnclient start
+echo "sleeping for 30 sec"
+sleep 30
+create_nic_adaptor
+create_account
+assign_password
+account_connect
+account_status	
+#assign_ip	
+echo "Connected to vpn server ${arg_dict["public_ip"]}"
+/usr/local/bin/cloud_vpn_client_mon.sh & 

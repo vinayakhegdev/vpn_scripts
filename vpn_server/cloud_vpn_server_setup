@@ -1,0 +1,76 @@
+#!/bin/bash
+
+declare -A arg_dict
+declare -A out_dict
+
+PASSWORD="secret@123"
+USERNAME="cloud"
+WORKDIR="/usr/local"
+SHARE="/mnt"
+
+create_local_bridge() {
+    logfile=${arg_dict["logfile"]}
+    statusfile="$SHARE/status.txt"
+    echo "Entering BridgeCreate" >> $logfile
+    $WORKDIR/vpnserver/vpncmd /SERVER 127.0.0.1:1194 /PASSWORD:$PASSWORD /OUT:/tmp/status.txt /CMD:BridgeCreate cloud /DEVICE:soft /TAP:yes > /dev/null 2>&1
+    echo "Sleeping for 30 sec" >> $logfile
+    sleep 30
+    ifconfig tap_soft up
+    $WORKDIR/vpnserver/vpncmd /SERVER 127.0.0.1:1194 /PASSWORD:$PASSWORD /OUT:/tmp/status.txt /CMD:BridgeList > /dev/null 2>&1
+    status=$(grep "cloud" /tmp/status.txt | grep "Operating" | wc -l)
+    if [ $status -eq 0 ] 
+        then
+			out_dict["status"]="FAILURE"
+			out_dict["data"]="tap_soft device is not online"
+			echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" >> $logfile
+            echo -e "{\"status\":\""${out_dict["status"]}"\", \"data\":\""${out_dict["data"]}"\"}" > $statusfile
+            exit -1
+    fi          
+    echo "Exiting BridgeCreate" >> $logfile
+}
+
+assign_promisc() {
+    logfile=${arg_dict["logfile"]}
+    echo "Entering promisc assignment" >> $logfile
+    ip link set tap_soft promisc on
+    echo "Exiting promisc assignment" >> $logfile
+}
+
+usage() {
+    echo "Usage: ./cloud_vpn_server_setup.sh -g <public_ip> -l <logfile> -d share"
+}    
+
+arg_count=0
+while getopts "g:l:d:" opt; 
+do
+    case $opt in
+        g)
+            arg_dict["public_ip"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+    	l)
+			arg_dict["logfile"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+	    d)
+			SHARE=$OPTARG
+            WORKDIR="$SHARE/bin"
+            arg_count=$(($arg_count+1))
+            ;;
+    esac
+done
+
+if [ $arg_count != 3 ]
+    then
+        usage
+        exit -1
+fi
+$WORKDIR/vpnserver/vpnserver stop
+$WORKDIR/vpnserver/vpnserver start
+echo "Sleeping for 30 sec" >> ${arg_dict["logfile"]}
+sleep 30 
+create_local_bridge
+assign_promisc
+echo "VPN server is setup at ${arg_dict["public_ip"]}" >> ${arg_dict["logfile"]}
+/usr/local/cloud/cloud_vpn_server_mon &
+

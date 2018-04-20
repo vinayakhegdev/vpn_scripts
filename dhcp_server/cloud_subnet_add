@@ -1,0 +1,60 @@
+#!/bin/bash
+
+declare -A arg_dict
+declare -A out_dict
+
+WORKDIR="/cloud_mnt/dhcp_server"
+usage() {
+    echo "Usage: ./cloud_dhcp_server_subnet_add -s <subnet> -n <netmask> -a <subnet_start> -b <subnet_end> -l <logfile>"
+}    
+
+arg_count=0
+subnet_template=\
+"subnet subnet_start_val netmask netmask_val {\n
+  range range_start_val range_end_val;\n
+  option subnet-mask netmask_val;\n
+  default-lease-time 600;\n
+  max-lease-time 7200;\n
+}"
+
+while getopts "s:n:l:a:z:" opt; 
+do
+    case $opt in
+        s)
+            arg_dict["subnet"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+    	n)
+			arg_dict["netmask"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+	    l)
+			arg_dict["logifle"]="/cloud_mnt/logs/$OPTARG"
+            arg_count=$(($arg_count+1))
+    		;;
+		a)
+			arg_dict["range_start"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+	    z)
+			arg_dict["range_end"]=$OPTARG
+            arg_count=$(($arg_count+1))
+	esac
+done
+
+if [ $arg_count != 5 ]
+    then
+        usage
+        exit -1
+fi
+
+new_subnet=$(echo $subnet_template | sed -e "s/subnet_start_val/${arg_dict["subnet"]}/g;s/netmask_val/${arg_dict["netmask"]}/g;s/range_start_val/${arg_dict["range_start"]}/g;s/range_end_val/${arg_dict["range_end"]}/g") 
+
+present=$(grep -ni "range ${arg_dict["range_start"]} ${arg_dict["range_end"]}" $WORKDIR/dhcpd.conf | wc -l)
+if [ $present == "0" ]; then
+	echo " " >> $WORKDIR/dhcpd.conf
+	echo -e $new_subnet >> $WORKDIR/dhcpd.conf
+fi
+$WORKDIR/cloud_dhcp_server_start stop
+$WORKDIR/cloud_dhcp_server_start start
+

@@ -1,0 +1,52 @@
+#!/bin/bash
+
+declare -A arg_dict
+declare -A out_dict
+
+WORKDIR="/cloud_mnt"
+usage() {
+    echo "Usage: ./cloud_dhcp_relay_setup.sh -s <subnet> -n <netmask> -i <interface> -a <ip> -g <gateway> -l <logfile>"
+}    
+
+arg_count=0
+while getopts "s:n:i:a:l:g:" opt; 
+do
+    case $opt in
+        s)
+            arg_dict["subnet"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+    	n)
+			arg_dict["netmask"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+	    i)
+			arg_dict["interface"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+    	a)
+			arg_dict["ip"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+        l)
+			arg_dict["logfile"]="/cloud_mnt/logs/$OPTARG"
+            arg_count=$(($arg_count+1))
+            ;;
+        g)
+			arg_dict["gateway"]=$OPTARG
+            arg_count=$(($arg_count+1))
+            ;;
+    esac
+done
+
+if [ $arg_count != 6 ]
+    then
+        usage
+        exit -1
+fi
+
+ifconfig ${arg_dict["interface"]} ${arg_dict["ip"]} ${arg_dict["netmask"]} up
+sed -i "s/dhcp_server_ip/${arg_dict["gateway"]}/g" $WORKDIR/dhcp_relay/isc-dhcp-relay
+$WORKDIR/dhcp_relay/cloud_dhcp_relay_start stop
+$WORKDIR/dhcp_relay/cloud_dhcp_relay_start start
+
